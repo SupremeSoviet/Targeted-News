@@ -6,14 +6,15 @@ from urllib.parse import unquote
 import re
 import clickhouse_connect
 from datetime import datetime
+import os
 
 class NewsParsing:
     def __init__(self, base_url):
         self.base_url = base_url
         self.client = clickhouse_connect.Client(
-            host='your-clickhouse-host',  # Замените на ваш хост
-            user='your-service-account',  # Замените на ваш сервисный аккаунт
-            password='your-password'  # Замените на ваш пароль
+            host=os.getenv('CLICKHOUSE_HOST'),
+            user=os.getenv('CLICKHOUSE_USER'),
+            password=os.getenv('CLICKHOUSE_PASSWORD')
         )
 
     def link_parsing(self, url):
