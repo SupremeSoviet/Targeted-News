@@ -1,3 +1,4 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -6,7 +7,6 @@ from urllib.parse import unquote
 import re
 import clickhouse_connect
 from datetime import datetime
-import os
 
 class NewsParsing:
     def __init__(self, base_url):
