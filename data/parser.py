@@ -5,13 +5,13 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import unquote
 import re
-import clickhouse_connect
+from clickhouse_driver import Client
 from datetime import datetime
 
 class NewsParsing:
     def __init__(self, base_url):
         self.base_url = base_url
-        self.client = clickhouse_connect.Client(
+        self.client = Client(
             host=os.getenv('CLICKHOUSE_HOST'),
             user=os.getenv('CLICKHOUSE_USER'),
             password=os.getenv('CLICKHOUSE_PASSWORD')
