@@ -27,8 +27,8 @@ class NewsParsing:
         self.clickhouse_url = 'https://{0}:8443'.format('rc1d-p30cmvlt0u5hlr5f.mdb.yandexcloud.net')
         self.clickhouse_user = os.getenv('CLICKHOUSE_USER')
         self.clickhouse_password = os.getenv('CLICKHOUSE_PASSWORD')
-        self.verify_cert = '/usr/local/share/ca-certificates/Yandex/YandexInternalRootCA.crt'
-
+        self.verify_cert = '/usr/local/share/ca-certificates/Yandex/RootCA.crt'
+        
     def link_parsing(self, url):
         """
         Парсит ссылки на новости с заданной страницы URL.
