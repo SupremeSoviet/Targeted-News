@@ -8,7 +8,6 @@ import re
 import json
 import itertools
 import os
-from clickhouse_driver import Client
 
 class NewsParsing:
     """
@@ -25,11 +24,10 @@ class NewsParsing:
             base_url (str): Базовый URL сайта для парсинга новостей.
         """
         self.base_url = base_url
-        self.client = Client(
-            host=os.getenv('CLICKHOUSE_HOST'),
-            user=os.getenv('CLICKHOUSE_USER'),
-            password=os.getenv('CLICKHOUSE_PASSWORD')
-        )
+        self.clickhouse_url = 'https://{0}:8443'.format('rc1d-p30cmvlt0u5hlr5f.mdb.yandexcloud.net')
+        self.clickhouse_user = os.getenv('CLICKHOUSE_USER')
+        self.clickhouse_password = os.getenv('CLICKHOUSE_PASSWORD')
+        self.verify_cert = '/usr/local/share/ca-certificates/Yandex/YandexInternalRootCA.crt'
 
     def link_parsing(self, url):
         """
@@ -69,7 +67,7 @@ class NewsParsing:
 
             return filtered_urls
         else:
-            print(f"Не удалось получить доступ к сайту. Статус код: {response.status_code}")
+            #print(f"Не удалось получить доступ к сайту. Статус код: {response.status_code}")
             return []
 
     def fetch_news(self, link, date):
@@ -136,30 +134,9 @@ class NewsParsing:
                     time_published = f"{day}.{month}.{year}"
                 source = 'interfax'
                 link = soup.find('link', rel='canonical').get('href')
-            '''
-            elif 'theverge' in self.base_url:
-                title = soup.find('h1').get_text(strip=True) if soup.find('h1') else 'No title'
-                script_tag = soup.find('script', type='application/ld+json')
-                if script_tag:
-                    json_data = json.loads(script_tag.string)
-                    text = json_data.get('articleBody', '')
-                else:
-                    text = ''
-                time_published = soup.find('meta', property='article:published_time')['content'] if soup.find('meta', property='article:published_time') else None
-                date_pattern = re.compile(r'(\d{4})-(\d{2})-(\d{2})')
-                match = date_pattern.search(time_published)
-                if match:
-                    year = match.group(1)
-                    month = match.group(2)
-                    day = match.group(3)
-                    time_published = f"{day}.{month}.{year}"
-                source = 'theverge'
 
-
-                return [source, link, title, time_published, None, text]
-            '''
             if not article_block:
-                print(f"Не удалось найти блок статьи для {link}")
+                #print(f"Не удалось найти блок статьи для {link}")
                 return None
             text = ''
             paragraphs = article_block.find_all('p')
@@ -172,14 +149,13 @@ class NewsParsing:
             keywords = soup.find('meta', attrs={'name': 'keywords'}).get('content') if soup.find('meta', attrs={'name': 'keywords'}) else ''
 
             if 'Å' in text or 'æ' in text or 'µ' in text:
-                print('Фигня')
+                #print('Фигня')
                 return None
             text = re.sub(r'Москва\.\s.*?INTERFAX\.RU\s-\s', '', text)
             return [source, link, title, time_published, keywords, text]
         except Exception as e:
-            print(f"Ошибка при обработке статьи {link}: {e}")
+            #print(f"Ошибка при обработке статьи {link}: {e}")
             return None
-
 
     def parse_news(self, links):
         """
@@ -198,7 +174,7 @@ class NewsParsing:
             for result in results:
                 if result:
                     k+=1
-                    print(k, result)
+                    #print(k, result)
                     news_data.append(result)
 
         df = pd.DataFrame(news_data, columns=['source', 'url', 'title', 'time', 'keywords', 'text'])
@@ -213,7 +189,8 @@ class NewsParsing:
             df (pd.DataFrame): DataFrame с информацией о новостях.
         """
         records = df.to_dict('records')
-        self.client.execute('''
+        # Создание таблицы
+        create_table_query = '''
             CREATE TABLE IF NOT EXISTS news (
                 source String,
                 url String,
@@ -223,18 +200,47 @@ class NewsParsing:
                 text String
             ) ENGINE = MergeTree()
             ORDER BY (source, url)
-        ''')
+        '''
+        self.execute_query(create_table_query)
 
         # Проверка на дубликаты
-        existing_urls = self.client.execute('SELECT url FROM news')
+        existing_urls_query = 'SELECT url FROM news'
+        existing_urls = self.execute_query(existing_urls_query)
         existing_urls = {url[0] for url in existing_urls}
 
         new_records = [record for record in records if record['url'] not in existing_urls]
 
         if new_records:
-            self.client.execute('''
-                INSERT INTO news (source, url, title, time, keywords, text) VALUES
-            ''', new_records)
+            insert_query = 'INSERT INTO news (source, url, title, time, keywords, text) VALUES'
+            self.execute_query(insert_query, new_records)
+
+    def execute_query(self, query, data=None):
+        """
+        Выполняет запрос к ClickHouse.
+
+        Аргументы:
+            query (str): SQL-запрос.
+            data (list, optional): Данные для вставки. По умолчанию None.
+        """
+        try:
+            response = requests.post(
+                self.clickhouse_url,
+                params={
+                    'query': query
+                },
+                headers={
+                    'X-ClickHouse-User': self.clickhouse_user,
+                    'X-ClickHouse-Key': self.clickhouse_password
+                },
+                json=data,
+                verify=self.verify_cert
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            #print(f"Ошибка выполнения запроса: {e}")
+            return None
+
 
 def fetch_all_links(base_url, start, end, step=1):
     """
@@ -289,4 +295,5 @@ news_df_4 = cnews_parser_4.parse_news(links_4)
 the_verge_url = 'https://www.theverge.com/tech/archives/'
 links_4 = fetch_all_links(the_verge_url, 2, 3)
 cnews_parser_4 = NewsParsing(the_verge_url)
-news_df_4 = cnews_parser_4.parse_news(links_4)'''
+news_df_4 = cnews_parser_4.parse_news(links_4)
+'''
