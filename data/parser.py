@@ -7,6 +7,7 @@ from datetime import datetime
 import re
 import json
 import itertools
+import os
 from clickhouse_driver import Client
 
 class NewsParsing:
